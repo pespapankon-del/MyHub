@@ -106,11 +106,11 @@ local function hopToEmpty()
     end
 end
 
--- Filter
+-- Filter (egg = Lua data table from FieldEggShifted)
 local function passesFilter(egg)
-    if Config.TargetRarity ~= "All" then
-        local tag = egg:FindFirstChild("Rarity") or egg:FindFirstChild("rarity")
-        if not tag or tag.Value ~= Config.TargetRarity then return false end
+    if Config.TargetPet and Config.TargetPet ~= "All" then
+        local name = egg.name or egg.Name or egg.petName or egg.PetName or ""
+        if not tostring(name):lower():find(Config.TargetPet:lower(), 1, true) then return false end
     end
     if Config.MutationOnly then
         local mut = egg:FindFirstChild("Mutation") or egg:FindFirstChild("mutation")
@@ -400,24 +400,145 @@ local function mkbtn(label, col, cb)
     end)
 end
 
--- Rarity button
-local rBtn = Instance.new("TextButton")
-rBtn.Size = UDim2.new(1,0,0,38)
-rBtn.BackgroundColor3 = Color3.fromRGB(140,80,20)
-rBtn.TextColor3 = Color3.new(1,1,1)
-rBtn.Font = Enum.Font.Gotham
-rBtn.TextSize = 13
-rBtn.Text = "Filter: All"
-rBtn.AutoButtonColor = false
-rBtn.Parent = Scroll
-Instance.new("UICorner", rBtn).CornerRadius = UDim.new(0,8)
-local rp = Instance.new("UIPadding")
-rp.PaddingLeft = UDim.new(0,12)
-rp.Parent = rBtn
-rBtn.MouseButton1Click:Connect(function()
-    rarityIdx = (rarityIdx % #rarityList) + 1
-    Config.TargetRarity = rarityList[rarityIdx]
-    rBtn.Text = "Filter: " .. Config.TargetRarity
+-- Pet list for filter
+local allPets = {
+    -- Divine
+    {n="Unicorn",t="Divine"},{n="Kitsune",t="Divine"},{n="Nightflame",t="Divine"},{n="Dreadscale",t="Divine"},
+    -- Eternal
+    {n="Ice Dragon",t="Eternal"},{n="Phoenix",t="Eternal"},{n="Lava Dragon",t="Eternal"},
+    {n="El Maja",t="Eternal"},{n="Mosasaurus",t="Eternal"},{n="Oni Tiger",t="Eternal"},
+    {n="Gorilla King",t="Eternal"},{n="Krakenoid",t="Eternal"},{n="Strawberry Elephant",t="Eternal"},
+    -- Secret
+    {n="King Snake",t="Secret"},{n="Yeti",t="Secret"},{n="Cerberus",t="Secret"},
+    {n="Kraken",t="Secret"},{n="Tralaledon",t="Secret"},{n="T-Rex",t="Secret"},
+    {n="Cosmic Dragon",t="Secret"},{n="Stag",t="Secret"},{n="Mutant Shark",t="Secret"},
+    -- Cosmic
+    {n="Leviathan",t="Cosmic"},{n="King Mammoth",t="Cosmic"},{n="Whale Shark",t="Cosmic"},
+    {n="Beluga Whale",t="Cosmic"},{n="Triceratops",t="Cosmic"},{n="Bronto",t="Cosmic"},
+    {n="Koi",t="Cosmic"},{n="Snowy Owl",t="Cosmic"},{n="Mantaris",t="Cosmic"},
+    -- Mythic
+    {n="Scorpion",t="Mythic"},{n="Sand Spider",t="Mythic"},{n="Spider",t="Mythic"},
+    {n="Tiger",t="Mythic"},{n="Sabertooth Tiger",t="Mythic"},{n="Mammoth",t="Mythic"},
+    {n="Orca",t="Mythic"},{n="Ankylosaurus",t="Mythic"},{n="Red Panda",t="Mythic"},
+    -- Legendary
+    {n="Axolotl",t="Legendary"},{n="Gorilla",t="Legendary"},{n="Polar Bear",t="Legendary"},
+    {n="Flaming Bull",t="Legendary"},{n="Shark",t="Legendary"},{n="Pterodactyl",t="Legendary"},
+    -- Rare/Epic/Common
+    {n="Owl",t="Rare"},{n="Raccoon",t="Rare"},{n="Turtle",t="Rare"},
+    {n="Bear",t="Epic"},{n="Fox",t="Epic"},{n="Crocodile",t="Epic"},
+    {n="Chicken",t="Common"},{n="Dog",t="Common"},{n="Frog",t="Common"},
+}
+local tierColor = {
+    Divine=Color3.fromRGB(255,215,0), Eternal=Color3.fromRGB(255,100,255),
+    Secret=Color3.fromRGB(255,50,50), Cosmic=Color3.fromRGB(100,200,255),
+    Mythic=Color3.fromRGB(180,80,255), Legendary=Color3.fromRGB(255,140,0),
+    Rare=Color3.fromRGB(60,120,255), Epic=Color3.fromRGB(160,60,220),
+    Common=Color3.fromRGB(140,140,140),
+}
+
+-- Filter open button
+local filterOpen = false
+local filterBtn = Instance.new("TextButton")
+filterBtn.Size = UDim2.new(1,0,0,38)
+filterBtn.BackgroundColor3 = Color3.fromRGB(80,50,150)
+filterBtn.TextColor3 = Color3.new(1,1,1)
+filterBtn.Font = Enum.Font.Gotham
+filterBtn.TextSize = 12
+filterBtn.Text = "Target: All  [tap to filter]"
+filterBtn.AutoButtonColor = false
+filterBtn.Parent = Scroll
+Instance.new("UICorner",filterBtn).CornerRadius=UDim.new(0,8)
+
+-- Popup frame (inside Win, not Scroll)
+local Pop = Instance.new("Frame")
+Pop.Size = UDim2.new(1,-20,0,320)
+Pop.Position = UDim2.new(0,10,0,50)
+Pop.BackgroundColor3 = Color3.fromRGB(18,18,28)
+Pop.BorderSizePixel = 0
+Pop.Visible = false
+Pop.ZIndex = 10
+Pop.Parent = Win
+Instance.new("UICorner",Pop).CornerRadius=UDim.new(0,10)
+
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(1,-16,0,32)
+SearchBox.Position = UDim2.new(0,8,0,8)
+SearchBox.BackgroundColor3 = Color3.fromRGB(30,30,45)
+SearchBox.TextColor3 = Color3.new(1,1,1)
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.TextSize = 12
+SearchBox.PlaceholderText = "Search pet..."
+SearchBox.PlaceholderColor3 = Color3.fromRGB(100,100,120)
+SearchBox.Text = ""
+SearchBox.ClearTextOnFocus = false
+SearchBox.ZIndex = 11
+SearchBox.Parent = Pop
+Instance.new("UICorner",SearchBox).CornerRadius=UDim.new(0,6)
+
+local PopScroll = Instance.new("ScrollingFrame")
+PopScroll.Size = UDim2.new(1,-8,1,-48)
+PopScroll.Position = UDim2.new(0,4,0,44)
+PopScroll.BackgroundTransparency = 1
+PopScroll.ScrollBarThickness = 3
+PopScroll.CanvasSize = UDim2.new(0,0,0,0)
+PopScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PopScroll.ZIndex = 11
+PopScroll.Parent = Pop
+Instance.new("UIListLayout",PopScroll).Padding = UDim.new(0,3)
+
+local petRows = {}
+local function buildList(query)
+    for _,r in pairs(petRows) do r:Destroy() end
+    petRows = {}
+    -- All option
+    local allBtn = Instance.new("TextButton")
+    allBtn.Size = UDim2.new(1,-6,0,30)
+    allBtn.BackgroundColor3 = Config.TargetPet=="All" and Color3.fromRGB(60,60,90) or Color3.fromRGB(30,30,45)
+    allBtn.TextColor3 = Color3.new(1,1,1)
+    allBtn.Font = Enum.Font.Gotham; allBtn.TextSize=12
+    allBtn.Text = "All Eggs"
+    allBtn.AutoButtonColor=false; allBtn.ZIndex=12; allBtn.Parent=PopScroll
+    Instance.new("UICorner",allBtn).CornerRadius=UDim.new(0,6)
+    allBtn.MouseButton1Click:Connect(function()
+        Config.TargetPet="All"
+        filterBtn.Text="Target: All  [tap to filter]"
+        Pop.Visible=false; filterOpen=false
+        buildList("")
+    end)
+    table.insert(petRows,allBtn)
+    -- Pet rows
+    for _,p in ipairs(allPets) do
+        if query=="" or p.n:lower():find(query:lower(),1,true) then
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.new(1,-6,0,30)
+            b.BackgroundColor3 = Config.TargetPet==p.n and Color3.fromRGB(60,60,90) or Color3.fromRGB(25,25,38)
+            b.TextColor3 = tierColor[p.t] or Color3.new(1,1,1)
+            b.Font = Enum.Font.Gotham; b.TextSize=12
+            b.Text = p.n.."  ("..p.t..")"
+            b.TextXAlignment=Enum.TextXAlignment.Left
+            b.AutoButtonColor=false; b.ZIndex=12; b.Parent=PopScroll
+            Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+            local pp=Instance.new("UIPadding"); pp.PaddingLeft=UDim.new(0,8); pp.Parent=b
+            b.MouseButton1Click:Connect(function()
+                Config.TargetPet=p.n
+                filterBtn.Text="Target: "..p.n.."  ("..p.t..")"
+                filterBtn.TextColor3 = tierColor[p.t] or Color3.new(1,1,1)
+                Pop.Visible=false; filterOpen=false
+                buildList("")
+            end)
+            table.insert(petRows,b)
+        end
+    end
+end
+Config.TargetPet = "All"
+buildList("")
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    buildList(SearchBox.Text)
+end)
+filterBtn.MouseButton1Click:Connect(function()
+    filterOpen = not filterOpen
+    Pop.Visible = filterOpen
+    if filterOpen then SearchBox:CaptureFocus() end
 end)
 
 sec("Auto Farm")
