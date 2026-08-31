@@ -180,49 +180,80 @@ local function trainTreadmill()
     if tierRaise then pcall(function() tierRaise:InvokeServer() end) end
 end
 
--- Steal immediately when egg spawns (no global lock — each egg runs independently)
-local stolen = {}
-local function tryStealEgg(egg)
-    if not Config.AutoSteal then return end
-    if stolen[egg] then return end
-    if not passesFilter(egg) then return end
-    stolen[egg] = true
-    task.spawn(function()
-        pcall(function()
-            local part = egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")
-            if part then
-                rootPart.CFrame = CFrame.new(part.Position + Vector3.new(0,0,2))
-                task.wait(0.05)
+-- Collect all NestModels from GuardAreas
+local function getAllNests()
+    local nests = {}
+    local ga = workspace:FindFirstChild("__OBJECTS")
+    if not ga then return nests end
+    ga = ga:FindFirstChild("Areas")
+    if not ga then return nests end
+    ga = ga:FindFirstChild("GuardAreas")
+    if not ga then return nests end
+    for _, zone in pairs(ga:GetChildren()) do
+        local nestsFolder = zone:FindFirstChild("Nests")
+        if nestsFolder then
+            for _, nest in pairs(nestsFolder:GetChildren()) do
+                table.insert(nests, nest)
             end
-            local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt then
-                fireproximityprompt(prompt)
-            else
-                local stealRemote = getNet("RF/EggWorld/AskFieldEggCarry")
-                if stealRemote then stealRemote:InvokeServer(egg) end
-            end
-            Config.Stats.EggsStolen += 1
-            task.wait(0.3)
-            returnToBase()
-            if Config.AutoHatch then hatchEggs() end
-        end)
-        task.wait(5)
-        stolen[egg] = nil
-    end)
+        end
+    end
+    return nests
 end
 
--- Hook into workspace.Eggs ChildAdded
-local eggsFolder = workspace:WaitForChild("Eggs", 10)
-if eggsFolder then
-    -- grab any already there
-    for _, egg in ipairs(eggsFolder:GetChildren()) do
-        task.spawn(tryStealEgg, egg)
+-- Get all SmartPromptParts
+local function getSmartPrompts()
+    local prompts = {}
+    for _, v in pairs(workspace:GetChildren()) do
+        if v.Name == "SmartPromptPart" then
+            local pp = v:FindFirstChildWhichIsA("ProximityPrompt")
+            if pp then table.insert(prompts, {part=v, prompt=pp}) end
+        end
     end
-    eggsFolder.ChildAdded:Connect(function(egg)
-        task.wait(0.05)
-        tryStealEgg(egg)
-    end)
+    return prompts
 end
+
+-- Find nearest SmartPromptPart to a position
+local function nearestPrompt(pos, prompts)
+    local best, bestDist = nil, math.huge
+    for _, p in ipairs(prompts) do
+        local d = (p.part.Position - pos).Magnitude
+        if d < bestDist then bestDist = d; best = p end
+    end
+    return best, bestDist
+end
+
+-- Auto steal loop using NestModel scanning
+local stealBusy = false
+task.spawn(function()
+    while true do
+        if Config.AutoSteal and not stealBusy then
+            local nests = getAllNests()
+            local prompts = getSmartPrompts()
+            for _, nest in ipairs(nests) do
+                if not Config.AutoSteal then break end
+                local egg = nest:FindFirstChildWhichIsA("Model")
+                if egg then
+                    local eggPart = nest:FindFirstChild("EggSpotBottom") or nest:FindFirstChild("Root")
+                    if eggPart then
+                        local nearest, dist = nearestPrompt(eggPart.Position, prompts)
+                        if nearest then
+                            stealBusy = true
+                            rootPart.CFrame = CFrame.new(nearest.part.Position + Vector3.new(0,0,2))
+                            task.wait(0.1)
+                            pcall(function() fireproximityprompt(nearest.prompt) end)
+                            Config.Stats.EggsStolen += 1
+                            task.wait(Config.StealDelay)
+                            returnToBase()
+                            if Config.AutoHatch then hatchEggs() end
+                            stealBusy = false
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
 
 -- Main loop (support functions & stats)
 local sessionStart = os.clock()
