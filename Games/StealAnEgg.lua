@@ -402,38 +402,13 @@ end
 
 -- Pet list for filter
 local allPets = {
-    -- Divine
-    {n="Unicorn",t="Divine"},{n="Kitsune",t="Divine"},{n="Nightflame",t="Divine"},{n="Dreadscale",t="Divine"},
-    -- Eternal
-    {n="Ice Dragon",t="Eternal"},{n="Phoenix",t="Eternal"},{n="Lava Dragon",t="Eternal"},
-    {n="El Maja",t="Eternal"},{n="Mosasaurus",t="Eternal"},{n="Oni Tiger",t="Eternal"},
-    {n="Gorilla King",t="Eternal"},{n="Krakenoid",t="Eternal"},{n="Strawberry Elephant",t="Eternal"},
-    -- Secret
-    {n="King Snake",t="Secret"},{n="Yeti",t="Secret"},{n="Cerberus",t="Secret"},
-    {n="Kraken",t="Secret"},{n="Tralaledon",t="Secret"},{n="T-Rex",t="Secret"},
-    {n="Cosmic Dragon",t="Secret"},{n="Stag",t="Secret"},{n="Mutant Shark",t="Secret"},
-    -- Cosmic
-    {n="Leviathan",t="Cosmic"},{n="King Mammoth",t="Cosmic"},{n="Whale Shark",t="Cosmic"},
-    {n="Beluga Whale",t="Cosmic"},{n="Triceratops",t="Cosmic"},{n="Bronto",t="Cosmic"},
-    {n="Koi",t="Cosmic"},{n="Snowy Owl",t="Cosmic"},{n="Mantaris",t="Cosmic"},
-    -- Mythic
-    {n="Scorpion",t="Mythic"},{n="Sand Spider",t="Mythic"},{n="Spider",t="Mythic"},
-    {n="Tiger",t="Mythic"},{n="Sabertooth Tiger",t="Mythic"},{n="Mammoth",t="Mythic"},
-    {n="Orca",t="Mythic"},{n="Ankylosaurus",t="Mythic"},{n="Red Panda",t="Mythic"},
-    -- Legendary
-    {n="Axolotl",t="Legendary"},{n="Gorilla",t="Legendary"},{n="Polar Bear",t="Legendary"},
-    {n="Flaming Bull",t="Legendary"},{n="Shark",t="Legendary"},{n="Pterodactyl",t="Legendary"},
-    -- Rare/Epic/Common
-    {n="Owl",t="Rare"},{n="Raccoon",t="Rare"},{n="Turtle",t="Rare"},
-    {n="Bear",t="Epic"},{n="Fox",t="Epic"},{n="Crocodile",t="Epic"},
-    {n="Chicken",t="Common"},{n="Dog",t="Common"},{n="Frog",t="Common"},
-}
-local tierColor = {
-    Divine=Color3.fromRGB(255,215,0), Eternal=Color3.fromRGB(255,100,255),
-    Secret=Color3.fromRGB(255,50,50), Cosmic=Color3.fromRGB(100,200,255),
-    Mythic=Color3.fromRGB(180,80,255), Legendary=Color3.fromRGB(255,140,0),
-    Rare=Color3.fromRGB(60,120,255), Epic=Color3.fromRGB(160,60,220),
-    Common=Color3.fromRGB(140,140,140),
+    "Unicorn","Kitsune","Nightflame","Dreadscale",
+    "Ice Dragon","Phoenix","Lava Dragon","El Maja","Mosasaurus","Oni Tiger","Gorilla King","Krakenoid","Strawberry Elephant",
+    "King Snake","Yeti","Cerberus","Kraken","Tralaledon","T-Rex","Cosmic Dragon","Stag","Mutant Shark",
+    "Leviathan","King Mammoth","Whale Shark","Beluga Whale","Triceratops","Bronto","Koi","Snowy Owl","Mantaris",
+    "Scorpion","Sand Spider","Spider","Tiger","Sabertooth Tiger","Mammoth","Orca","Ankylosaurus","Red Panda",
+    "Axolotl","Gorilla","Polar Bear","Flaming Bull","Shark","Pterodactyl",
+    "Owl","Raccoon","Turtle","Bear","Fox","Crocodile","Chicken","Dog","Frog",
 }
 
 -- Filter open button
@@ -507,22 +482,22 @@ local function buildList(query)
     end)
     table.insert(petRows,allBtn)
     -- Pet rows
-    for _,p in ipairs(allPets) do
-        if query=="" or p.n:lower():find(query:lower(),1,true) then
+    for _,name in ipairs(allPets) do
+        if query=="" or name:lower():find(query:lower(),1,true) then
             local b = Instance.new("TextButton")
             b.Size = UDim2.new(1,-6,0,30)
-            b.BackgroundColor3 = Config.TargetPet==p.n and Color3.fromRGB(60,60,90) or Color3.fromRGB(25,25,38)
-            b.TextColor3 = tierColor[p.t] or Color3.new(1,1,1)
+            b.BackgroundColor3 = Config.TargetPet==name and Color3.fromRGB(60,60,90) or Color3.fromRGB(25,25,38)
+            b.TextColor3 = Color3.fromRGB(220,220,220)
             b.Font = Enum.Font.Gotham; b.TextSize=12
-            b.Text = p.n.."  ("..p.t..")"
+            b.Text = name
             b.TextXAlignment=Enum.TextXAlignment.Left
             b.AutoButtonColor=false; b.ZIndex=12; b.Parent=PopScroll
             Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
             local pp=Instance.new("UIPadding"); pp.PaddingLeft=UDim.new(0,8); pp.Parent=b
             b.MouseButton1Click:Connect(function()
-                Config.TargetPet=p.n
-                filterBtn.Text="Target: "..p.n.."  ("..p.t..")"
-                filterBtn.TextColor3 = tierColor[p.t] or Color3.new(1,1,1)
+                Config.TargetPet=name
+                filterBtn.Text="Target: "..name
+                filterBtn.TextColor3 = Color3.fromRGB(220,220,220)
                 Pop.Visible=false; filterOpen=false
                 buildList("")
             end)
