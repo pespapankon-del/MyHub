@@ -180,78 +180,51 @@ local function trainTreadmill()
     if tierRaise then pcall(function() tierRaise:InvokeServer() end) end
 end
 
--- Collect all NestModels from GuardAreas
-local function getAllNests()
-    local nests = {}
-    local ga = workspace:FindFirstChild("__OBJECTS")
-    if not ga then return nests end
-    ga = ga:FindFirstChild("Areas")
-    if not ga then return nests end
-    ga = ga:FindFirstChild("GuardAreas")
-    if not ga then return nests end
-    for _, zone in pairs(ga:GetChildren()) do
-        local nestsFolder = zone:FindFirstChild("Nests")
-        if nestsFolder then
-            for _, nest in pairs(nestsFolder:GetChildren()) do
-                table.insert(nests, nest)
-            end
+-- Egg data pool from server events
+local fieldEggs = {}
+local carryRemote = getNet("RF/EggWorld/AskFieldEggCarry")
+local dropRemote  = getNet("RF/EggWorld/AskFieldEggDrop")
+local shiftedRE   = getNet("RE/EggWorld/FieldEggShifted")
+local goneRE      = getNet("RE/EggWorld/FieldEggGone")
+
+if shiftedRE then
+    shiftedRE.OnClientEvent:Connect(function(eggData)
+        if type(eggData) == "table" then
+            local id = eggData.id or eggData.Id or tostring(eggData)
+            fieldEggs[id] = eggData
         end
-    end
-    return nests
+    end)
+end
+if goneRE then
+    goneRE.OnClientEvent:Connect(function(id)
+        fieldEggs[tostring(id)] = nil
+    end)
 end
 
--- Get all SmartPromptParts
-local function getSmartPrompts()
-    local prompts = {}
-    for _, v in pairs(workspace:GetChildren()) do
-        if v.Name == "SmartPromptPart" then
-            local pp = v:FindFirstChildWhichIsA("ProximityPrompt")
-            if pp then table.insert(prompts, {part=v, prompt=pp}) end
-        end
-    end
-    return prompts
-end
-
--- Find nearest SmartPromptPart to a position
-local function nearestPrompt(pos, prompts)
-    local best, bestDist = nil, math.huge
-    for _, p in ipairs(prompts) do
-        local d = (p.part.Position - pos).Magnitude
-        if d < bestDist then bestDist = d; best = p end
-    end
-    return best, bestDist
-end
-
--- Auto steal loop using NestModel scanning
+-- Auto steal loop — uses real egg data tables from server
 local stealBusy = false
 task.spawn(function()
     while true do
-        if Config.AutoSteal and not stealBusy then
-            local nests = getAllNests()
-            local prompts = getSmartPrompts()
-            for _, nest in ipairs(nests) do
+        if Config.AutoSteal and not stealBusy and carryRemote then
+            for id, eggData in pairs(fieldEggs) do
                 if not Config.AutoSteal then break end
-                local egg = nest:FindFirstChildWhichIsA("Model")
-                if egg then
-                    local eggPart = nest:FindFirstChild("EggSpotBottom") or nest:FindFirstChild("Root")
-                    if eggPart then
-                        local nearest, dist = nearestPrompt(eggPart.Position, prompts)
-                        if nearest then
-                            stealBusy = true
-                            rootPart.CFrame = CFrame.new(nearest.part.Position + Vector3.new(0,0,2))
-                            task.wait(0.1)
-                            pcall(function() fireproximityprompt(nearest.prompt) end)
-                            Config.Stats.EggsStolen += 1
-                            task.wait(Config.StealDelay)
-                            returnToBase()
-                            if Config.AutoHatch then hatchEggs() end
-                            stealBusy = false
-                        end
-                    end
+                stealBusy = true
+                local ok = pcall(function()
+                    carryRemote:InvokeServer(eggData)
+                end)
+                if ok then
+                    Config.Stats.EggsStolen += 1
+                    fieldEggs[id] = nil
                 end
+                task.wait(Config.StealDelay)
+                if Config.AutoHatch then
+                    pcall(function() hatchEggs() end)
+                end
+                stealBusy = false
+                break
             end
         end
-        task.wait(0.5)
+        task.wait(0.3)
     end
 end)
 
