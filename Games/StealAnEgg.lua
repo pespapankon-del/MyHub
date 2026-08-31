@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
 local RS = game:GetService("ReplicatedStorage")
 local TS = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
@@ -36,7 +35,6 @@ local rarityList = {"All","Common","Uncommon","Rare","Epic","Legendary","Mythic"
 local rarityIdx = 1
 
 local function log(msg) print("[SAE] " .. tostring(msg)) end
-local function getDistance(a, b) return (a - b).Magnitude end
 
 local function safeWalk(pos)
     if not humanoid or humanoid.Health <= 0 then return end
@@ -151,45 +149,9 @@ local function updateESP()
     end
 end
 
--- Steal
-local function stealOne()
-    local folder = workspace:FindFirstChild("Eggs", true)
-    if not folder then return false end
-    local best, bestDist = nil, math.huge
-    for _, egg in ipairs(folder:GetChildren()) do
-        if passesFilter(egg) then
-            local part = egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")
-            if part then
-                local d = getDistance(rootPart.Position, part.Position)
-                if d < bestDist then bestDist = d; best = egg end
-            end
-        end
-    end
-    if not best then return false end
-    local bestPart = best.PrimaryPart or best:FindFirstChildWhichIsA("BasePart")
-    safeWalk(bestPart.Position)
-    local prompt = best:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if prompt then
-        pcall(function() fireproximityprompt(prompt) end)
-        Config.Stats.EggsStolen += 1
-        return true
-    end
-    local stealRemote = getNet("RF/EggWorld/AskFieldEggCarry")
-    if stealRemote then
-        pcall(function() stealRemote:InvokeServer(best) end)
-        Config.Stats.EggsStolen += 1
-        return true
-    end
-    rootPart.CFrame = CFrame.new(bestPart.Position + Vector3.new(0, 0, 2))
-    task.wait(0.5)
-    return false
-end
-
 local function returnToBase()
-    local base = workspace:FindFirstChild("Base_" .. player.UserId, true)
-    if not base then return end
-    local p = base.PrimaryPart or base:FindFirstChildWhichIsA("BasePart")
-    if p then safeWalk(p.Position) end
+    local delivery = workspace:FindFirstChild("DeliveryHitbox", true)
+    if delivery then safeWalk(delivery.Position) end
 end
 
 local function hatchEggs()
@@ -218,24 +180,62 @@ local function trainTreadmill()
     if tierRaise then pcall(function() tierRaise:InvokeServer() end) end
 end
 
--- Main loop
+-- Steal immediately when egg spawns (no global lock — each egg runs independently)
+local stolen = {}
+local function tryStealEgg(egg)
+    if not Config.AutoSteal then return end
+    if stolen[egg] then return end
+    if not passesFilter(egg) then return end
+    stolen[egg] = true
+    task.spawn(function()
+        pcall(function()
+            local part = egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")
+            if part then
+                rootPart.CFrame = CFrame.new(part.Position + Vector3.new(0,0,2))
+                task.wait(0.05)
+            end
+            local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then
+                fireproximityprompt(prompt)
+            else
+                local stealRemote = getNet("RF/EggWorld/AskFieldEggCarry")
+                if stealRemote then stealRemote:InvokeServer(egg) end
+            end
+            Config.Stats.EggsStolen += 1
+            task.wait(0.3)
+            returnToBase()
+            if Config.AutoHatch then hatchEggs() end
+        end)
+        task.wait(5)
+        stolen[egg] = nil
+    end)
+end
+
+-- Hook into workspace.Eggs ChildAdded
+local eggsFolder = workspace:WaitForChild("Eggs", 10)
+if eggsFolder then
+    -- grab any already there
+    for _, egg in ipairs(eggsFolder:GetChildren()) do
+        task.spawn(tryStealEgg, egg)
+    end
+    eggsFolder.ChildAdded:Connect(function(egg)
+        task.wait(0.05)
+        tryStealEgg(egg)
+    end)
+end
+
+-- Main loop (support functions & stats)
 local sessionStart = os.clock()
 task.spawn(function()
     while true do
         Config.Stats.SessionTime = math.floor(os.clock() - sessionStart)
         if Config.SpeedBoost and humanoid then humanoid.WalkSpeed = Config.WalkSpeed end
         updateESP()
-        if Config.AutoSteal then
-            if stealOne() then
-                returnToBase()
-                if Config.AutoHatch then hatchEggs() end
-            end
-        end
         if Config.AutoTreadmill and not Config.AutoSteal then trainTreadmill() end
         if Config.AutoServerHop and #Players:GetPlayers() > Config.MaxPlayers then
             task.spawn(hopToEmpty)
         end
-        task.wait(Config.StealDelay)
+        task.wait(1)
     end
 end)
 
