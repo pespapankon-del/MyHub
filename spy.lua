@@ -140,18 +140,14 @@ mt.__namecall = function(self, ...)
     if method == "FireServer" or method == "InvokeServer" then
         local path = self:GetFullName()
         if not isNoise(path) then
-            -- แสดงแค่ชื่อ remote + arg แรกถ้ามี
             local args = {...}
-            local arg1 = args[1] ~= nil and tostring(args[1]) or ""
-            -- ตัด arg ที่ยาวเกินไป (table/userdata)
-            if #arg1 > 60 then arg1 = arg1:sub(1,60).."..." end
-            local key = path .. "|" .. method
-            if not seen[key] then
-                seen[key] = true
-            end
-            local line = path
-            if arg1 ~= "" then line = line .. "  →  " .. arg1 end
-            addLog(line)
+            task.spawn(function()
+                local arg1 = args[1] ~= nil and tostring(args[1]) or ""
+                if #arg1 > 50 then arg1 = arg1:sub(1,50).."..." end
+                local line = path
+                if arg1 ~= "" then line = line .. "  → " .. arg1 end
+                addLog(line)
+            end)
         end
     end
     return old(self, ...)
