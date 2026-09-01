@@ -1,9 +1,11 @@
--- SPY with copyable GUI
+-- SPY v2 — no metatable hook, zero lag
 local CoreGui = game:GetService("CoreGui")
+local RS = game:GetService("ReplicatedStorage")
 pcall(function() CoreGui:FindFirstChild("SPY_GUI"):Destroy() end)
 
 local logs = {}
 
+-- GUI
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "SPY_GUI"
 Gui.ResetOnSpawn = false
@@ -21,7 +23,6 @@ Win.Draggable = true
 Win.Parent = Gui
 Instance.new("UICorner",Win).CornerRadius = UDim.new(0,12)
 
--- Titlebar
 local TB = Instance.new("Frame")
 TB.Size = UDim2.new(1,0,0,40)
 TB.BackgroundColor3 = Color3.fromRGB(80,40,180)
@@ -36,7 +37,7 @@ TBFix.BorderSizePixel = 0
 TBFix.Parent = TB
 
 local TL = Instance.new("TextLabel")
-TL.Size = UDim2.new(1,-80,1,0)
+TL.Size = UDim2.new(1,-50,1,0)
 TL.Position = UDim2.new(0,12,0,0)
 TL.BackgroundTransparency = 1
 TL.TextColor3 = Color3.new(1,1,1)
@@ -46,7 +47,6 @@ TL.TextXAlignment = Enum.TextXAlignment.Left
 TL.Text = "SPY — กด action ในเกมได้เลย"
 TL.Parent = TB
 
--- Close button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0,28,0,28)
 CloseBtn.Position = UDim2.new(1,-34,0.5,-14)
@@ -58,13 +58,10 @@ CloseBtn.Text = "X"
 CloseBtn.AutoButtonColor = false
 CloseBtn.Parent = TB
 Instance.new("UICorner",CloseBtn).CornerRadius = UDim.new(0,6)
-CloseBtn.MouseButton1Click:Connect(function()
-    Gui:Destroy()
-end)
+CloseBtn.MouseButton1Click:Connect(function() Gui:Destroy() end)
 
--- Log box (readonly textbox for copy)
 local LogBox = Instance.new("TextBox")
-LogBox.Size = UDim2.new(1,-16,1,-100)
+LogBox.Size = UDim2.new(1,-16,1,-96)
 LogBox.Position = UDim2.new(0,8,0,48)
 LogBox.BackgroundColor3 = Color3.fromRGB(22,22,35)
 LogBox.TextColor3 = Color3.fromRGB(180,255,180)
@@ -74,18 +71,15 @@ LogBox.TextXAlignment = Enum.TextXAlignment.Left
 LogBox.TextYAlignment = Enum.TextYAlignment.Top
 LogBox.MultiLine = true
 LogBox.ClearTextOnFocus = false
-LogBox.Text = "รอ action...\n"
+LogBox.Text = "scanning remotes...\n"
 LogBox.BorderSizePixel = 0
 LogBox.Parent = Win
 Instance.new("UICorner",LogBox).CornerRadius = UDim.new(0,8)
 local lp = Instance.new("UIPadding")
-lp.PaddingLeft = UDim.new(0,6)
-lp.PaddingTop = UDim.new(0,4)
-lp.Parent = LogBox
+lp.PaddingLeft = UDim.new(0,6); lp.PaddingTop = UDim.new(0,4); lp.Parent = LogBox
 
--- Clear button
 local ClearBtn = Instance.new("TextButton")
-ClearBtn.Size = UDim2.new(0.45,-4,0,36)
+ClearBtn.Size = UDim2.new(1,-16,0,36)
 ClearBtn.Position = UDim2.new(0,8,1,-44)
 ClearBtn.BackgroundColor3 = Color3.fromRGB(60,60,80)
 ClearBtn.TextColor3 = Color3.new(1,1,1)
@@ -97,61 +91,35 @@ ClearBtn.Parent = Win
 Instance.new("UICorner",ClearBtn).CornerRadius = UDim.new(0,8)
 ClearBtn.MouseButton1Click:Connect(function()
     logs = {}
-    LogBox.Text = "cleared...\n"
+    LogBox.Text = "cleared\n"
 end)
 
--- Status label
-local StatusLbl = Instance.new("TextLabel")
-StatusLbl.Size = UDim2.new(0.55,-4,0,36)
-StatusLbl.Position = UDim2.new(0.45,0,1,-44)
-StatusLbl.BackgroundTransparency = 1
-StatusLbl.TextColor3 = Color3.fromRGB(100,220,100)
-StatusLbl.Font = Enum.Font.Gotham
-StatusLbl.TextSize = 11
-StatusLbl.Text = "SPY active"
-StatusLbl.Parent = Win
-
--- กรองเฉพาะ remote ที่สำคัญ (ตัดพวก UI/render/input noise ออก)
-local skipList = {
-    "UIService", "VirtualInputManager", "UserInputService",
-    "AnimationController", "Animate", "RunService",
-    "Camera", "Players.LocalPlayer.PlayerGui",
-    "CoreGui", "HttpRbxApiService", "RobloxReplicatedStorage",
-}
-local function isNoise(path)
-    for _, s in ipairs(skipList) do
-        if path:find(s, 1, true) then return true end
-    end
-    return false
-end
-
-local seen = {}
 local function addLog(line)
     table.insert(logs, line)
     if #logs > 60 then table.remove(logs,1) end
-    LogBox.Text = table.concat(logs, "\n")
+    LogBox.Text = table.concat(logs,"\n")
 end
 
-local mt = getrawmetatable(game)
-local old = mt.__namecall
-setreadonly(mt, false)
-mt.__namecall = function(self, ...)
-    local method = getnamecallmethod()
-    if method == "FireServer" or method == "InvokeServer" then
-        local path = self:GetFullName()
-        if not isNoise(path) then
+-- Scan Networking folder และ connect ทุก Remote
+local Net = RS:WaitForChild("Packages",5) and RS.Packages:WaitForChild("Networking",5)
+if not Net then addLog("ERROR: Networking not found"); return end
+
+local count = 0
+for _, remote in ipairs(Net:GetDescendants()) do
+    if remote:IsA("RemoteEvent") then
+        local name = remote.Name
+        remote.OnClientEvent:Connect(function(...)
             local args = {...}
-            task.spawn(function()
-                local arg1 = args[1] ~= nil and tostring(args[1]) or ""
-                if #arg1 > 50 then arg1 = arg1:sub(1,50).."..." end
-                local line = path
-                if arg1 ~= "" then line = line .. "  → " .. arg1 end
-                addLog(line)
-            end)
-        end
+            local a1 = args[1] ~= nil and tostring(args[1]) or ""
+            if #a1 > 40 then a1 = a1:sub(1,40).."..." end
+            addLog("[RE←Server] " .. name .. (a1~="" and "  → "..a1 or ""))
+        end)
+        count += 1
+    elseif remote:IsA("RemoteFunction") then
+        count += 1
     end
-    return old(self, ...)
 end
-setreadonly(mt, true)
 
-addLog("SPY ready — กด action ในเกมได้เลย")
+addLog("connected " .. count .. " remotes")
+addLog("กด Hatch / Treadmill / Sell / Place ได้เลย")
+addLog("(RF จะขึ้นเมื่อ server reply กลับมา)")
