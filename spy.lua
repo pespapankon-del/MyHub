@@ -111,10 +111,24 @@ StatusLbl.TextSize = 11
 StatusLbl.Text = "SPY active"
 StatusLbl.Parent = Win
 
--- SPY hook
+-- กรองเฉพาะ remote ที่สำคัญ (ตัดพวก UI/render/input noise ออก)
+local skipList = {
+    "UIService", "VirtualInputManager", "UserInputService",
+    "AnimationController", "Animate", "RunService",
+    "Camera", "Players.LocalPlayer.PlayerGui",
+    "CoreGui", "HttpRbxApiService", "RobloxReplicatedStorage",
+}
+local function isNoise(path)
+    for _, s in ipairs(skipList) do
+        if path:find(s, 1, true) then return true end
+    end
+    return false
+end
+
+local seen = {}
 local function addLog(line)
     table.insert(logs, line)
-    if #logs > 80 then table.remove(logs,1) end
+    if #logs > 60 then table.remove(logs,1) end
     LogBox.Text = table.concat(logs, "\n")
 end
 
@@ -124,16 +138,24 @@ setreadonly(mt, false)
 mt.__namecall = function(self, ...)
     local method = getnamecallmethod()
     if method == "FireServer" or method == "InvokeServer" then
-        local args = {...}
-        local line = "[" .. method .. "] " .. self:GetFullName()
-        addLog(line)
-        for i,v in ipairs(args) do
-            addLog("  arg"..i..": "..tostring(v))
+        local path = self:GetFullName()
+        if not isNoise(path) then
+            -- แสดงแค่ชื่อ remote + arg แรกถ้ามี
+            local args = {...}
+            local arg1 = args[1] ~= nil and tostring(args[1]) or ""
+            -- ตัด arg ที่ยาวเกินไป (table/userdata)
+            if #arg1 > 60 then arg1 = arg1:sub(1,60).."..." end
+            local key = path .. "|" .. method
+            if not seen[key] then
+                seen[key] = true
+            end
+            local line = path
+            if arg1 ~= "" then line = line .. "  →  " .. arg1 end
+            addLog(line)
         end
-        addLog("---")
     end
     return old(self, ...)
 end
 setreadonly(mt, true)
 
-addLog("SPY ready — go do actions in game!")
+addLog("SPY ready — กด action ในเกมได้เลย")
